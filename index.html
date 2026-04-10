@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EkoTrack - Carbon Tracker</title>
+
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:Arial, sans-serif; }
+body {
+    background: url("background.jpg") no-repeat center center fixed;
+    background-size: cover;
+    color:#e6f2ea;
+    min-height:100vh;
+}
+body::before {
+    content:"";
+    position:fixed;
+    inset:0;
+    background:rgba(0,15,10,0.75);
+    backdrop-filter:blur(4px);
+    z-index:-1;
+}
+header {
+    background:rgba(0,0,0,0.25);
+    backdrop-filter:blur(12px);
+    padding:20px 40px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+header h1 { color:#2ecc71; }
+nav a {
+    margin-left:20px;
+    text-decoration:none;
+    color:#9fb5a7;
+    cursor:pointer;
+}
+nav a.active {
+    color:#2ecc71;
+    border-bottom:2px solid #2ecc71;
+    padding-bottom:5px;
+}
+.container {
+    max-width:900px;
+    margin:60px auto;
+    background:rgba(22,37,29,0.85);
+    padding:40px;
+    border-radius:16px;
+    backdrop-filter:blur(10px);
+    box-shadow:0 10px 40px rgba(0,255,120,0.1);
+}
+.form-group { margin-bottom:20px; position:relative; }
+label { display:block; margin-bottom:6px; font-weight:600; color:#b7d8c6; }
+input, select {
+    width:100%;
+    padding:12px;
+    border-radius:8px;
+    border:1px solid #244534;
+    background:#0f1a14;
+    color:#e6f2ea;
+}
+.row { display:flex; gap:20px; }
+.row .form-group { flex:1; }
+button {
+    width:100%;
+    padding:14px;
+    border:none;
+    border-radius:10px;
+    background:#1e7f4f;
+    color:white;
+    font-size:16px;
+    font-weight:bold;
+    cursor:pointer;
+    margin-top:10px;
+    transition:0.3s;
+}
+button:hover { background:#27ae60; }
+.result {
+    margin-top:30px;
+    padding:20px;
+    background:#0f1a14;
+    border:1px solid #244534;
+    border-radius:10px;
+}
+.suggestions {
+    background:#0f1a14;
+    border:1px solid #244534;
+    border-radius:8px;
+    max-height:200px;
+    overflow-y:auto;
+    position:absolute;
+    width:100%;
+    z-index:10;
+}
+.suggestions div { padding:10px; cursor:pointer; }
+.suggestions div:hover { background:#1e7f4f; }
+
+#saveBtn { background:#2ecc71; margin-top:15px; color:#0a1410; }
+
+#trendsSection, #sustainSection { display:none; }
+
+.trends-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:10px;
+}
+#viewSelect {
+    width:auto;
+    padding:5px 15px;
+    background:#1e7f4f;
+    border:none;
+    font-weight:bold;
+}
+canvas {
+    background:rgba(0,0,0,0.2);
+    border-radius:8px;
+    margin-top:20px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>🌿 EkoTrack</h1>
+<nav>
+<a id="navTrack" class="active" onclick="showSection('track')">Track Entry</a>
+<a id="navTrends" onclick="showSection('trends')">Trends</a>
+<a id="navSustain" onclick="showSection('sustain')">Sustainability</a>
+</nav>
+</header>
+
+<!-- TRACK -->
+<div class="container" id="trackSection">
+<h2>Track New Entry</h2>
+<p>Enter two locations to calculate carbon emissions.</p>
+
+<div class="form-group">
+<label>Date</label>
+<input type="date" id="date" />
+</div>
+
+<div class="row">
+<div class="form-group">
+<label>From</label>
+<input type="text" id="from">
+<div id="fromSuggestions" class="suggestions"></div>
+</div>
+
+<div class="form-group">
+<label>To</label>
+<input type="text" id="to">
+<div id="toSuggestions" class="suggestions"></div>
+</div>
+</div>
+
+<div class="form-group">
+<label>Mode of Transport</label>
+<select id="transport">
+<option value="">Select mode</option>
+<option value="car">Car</option>
+<option value="bus">Bus</option>
+<option value="train">Train</option>
+<option value="flight_short">Flight (Short Haul)</option>
+<option value="flight_long">Flight (Long Haul)</option>
+</select>
+</div>
+
+<button onclick="calculateCarbon()">Calculate Carbon Footprint</button>
+
+<div class="result" id="resultBox" style="display:none;">
+<h3>Carbon Emissions Result</h3>
+<p id="resultText"></p>
+<button id="saveBtn" onclick="saveEntry()" style="display:none;">Save to Trends</button>
+</div>
+</div>
+
+<!-- TRENDS -->
+<div class="container" id="trendsSection">
+<div class="trends-header">
+<div>
+<h2>Your Emission Trends</h2>
+<p>Visualizing your carbon footprint.</p>
+</div>
+<select id="viewSelect" onchange="renderChart()">
+<option value="daily">Daily</option>
+<option value="monthly">Monthly</option>
+<option value="yearly">Yearly</option>
+</select>
+</div>
+<canvas id="emissionsChart"></canvas>
+<button onclick="clearHistory()" style="background:#c0392b;margin-top:40px;font-size:12px;width:auto;">Clear History</button>
+</div>
+
+<!-- SUSTAINABILITY -->
+<div class="container" id="sustainSection">
+<h2>Sustainability Insights</h2>
+<p>Smart suggestions to reduce your carbon footprint.</p>
+<div id="sustainContent" style="margin-top:20px;"></div>
+</div>
+
+<script>
+
+const emissionFactors = {
+car:0.192,
+bus:0.105,
+train:0.041,
+flight_short:0.158,
+flight_long:0.150
+};
+
+const MAPBOX_TOKEN = "pk.eyJ1Ijoic2FuMjc3NiIsImEiOiJjbW5zeXhocHQwaGV5Mm9xeWI5MTZrejd0In0.P3eEVCgWmy7PGIvt5YsqfA";
+
+let currentCalculation = null;
+let chartInstance = null;
+
+/* SECTION SWITCHING */
+function showSection(section){
+document.getElementById('trackSection').style.display = section==='track'?'block':'none';
+document.getElementById('trendsSection').style.display = section==='trends'?'block':'none';
+document.getElementById('sustainSection').style.display = section==='sustain'?'block':'none';
+
+document.getElementById('navTrack').classList.toggle('active', section==='track');
+document.getElementById('navTrends').classList.toggle('active', section==='trends');
+document.getElementById('navSustain').classList.toggle('active', section==='sustain');
+
+if(section==='trends') renderChart();
+if(section==='sustain') generateSustainabilityInsights();
+}
+
+/* AUTOCOMPLETE */
+function setupAutocomplete(inputId,suggestionsId){
+const input=document.getElementById(inputId);
+const suggestionsBox=document.getElementById(suggestionsId);
+
+input.addEventListener("input",async function(){
+const query=input.value;
+if(query.length<2){ suggestionsBox.innerHTML=""; return; }
+
+const response=await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?autocomplete=true&types=country,region,place&access_token=${MAPBOX_TOKEN}`);
+const data=await response.json();
+suggestionsBox.innerHTML="";
+data.features.slice(0,5).forEach(place=>{
+const div=document.createElement("div");
+div.textContent=place.place_name;
+div.onclick=()=>{ input.value=place.place_name; suggestionsBox.innerHTML=""; };
+suggestionsBox.appendChild(div);
+});
+});
+}
+setupAutocomplete("from","fromSuggestions");
+setupAutocomplete("to","toSuggestions");
+
+/* COORDS */
+async function getCoordinates(place){
+const response=await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(place)}.json?access_token=${MAPBOX_TOKEN}`);
+const data=await response.json();
+return data.features[0].center;
+}
+
+/* DISTANCE */
+async function getDistance(startCoords,endCoords,transport){
+if(transport.includes("flight")){
+const R=6371;
+const lat1=startCoords[1]*Math.PI/180;
+const lat2=endCoords[1]*Math.PI/180;
+const dLat=(endCoords[1]-startCoords[1])*Math.PI/180;
+const dLon=(endCoords[0]-startCoords[0])*Math.PI/180;
+const a=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
+}
+const response=await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${startCoords[0]},${startCoords[1]};${endCoords[0]},${endCoords[1]}?access_token=${MAPBOX_TOKEN}`);
+const data=await response.json();
+return data.routes[0].distance/1000;
+}
+
+/* CALCULATE */
+async function calculateCarbon(){
+const start=document.getElementById("from").value;
+const end=document.getElementById("to").value;
+const transport=document.getElementById("transport").value;
+const date=document.getElementById("date").value;
+if(!start||!end||!transport||!date){ alert("Fill all fields"); return; }
+
+const resultBox=document.getElementById("resultBox");
+const resultText=document.getElementById("resultText");
+const saveBtn=document.getElementById("saveBtn");
+
+resultBox.style.display="block";
+resultText.innerHTML="Calculating...";
+saveBtn.style.display="none";
+
+const startCoords=await getCoordinates(start);
+const endCoords=await getCoordinates(end);
+const distanceKm=await getDistance(startCoords,endCoords,transport);
+
+let emissions=distanceKm*emissionFactors[transport];
+if(transport.includes("flight")) emissions*=1.9;
+
+currentCalculation={
+date,
+emissions:parseFloat(emissions.toFixed(2)),
+transport,
+distance:distanceKm,
+from:start,
+to:end
+};
+
+resultText.innerHTML=`Distance: ${distanceKm.toFixed(2)} km<br>
+Carbon: <strong>${currentCalculation.emissions} kg CO₂</strong>`;
+
+saveBtn.style.display="block";
+}
+
+/* SAVE */
+function saveEntry(){
+const history=JSON.parse(localStorage.getItem('ekoTrackData')||'[]');
+history.push(currentCalculation);
+localStorage.setItem('ekoTrackData',JSON.stringify(history));
+alert("Saved!");
+document.getElementById("resultBox").style.display="none";
+}
+
+/* CHART */
+function renderChart(){
+const history=JSON.parse(localStorage.getItem('ekoTrackData')||'[]');
+const ctx=document.getElementById('emissionsChart').getContext('2d');
+const view=document.getElementById('viewSelect').value;
+if(chartInstance) chartInstance.destroy();
+
+const grouped={};
+history.forEach(item=>{
+const d=new Date(item.date+'T00:00:00');
+let label;
+if(view==='daily') label=d.toLocaleDateString('en-US',{weekday:'long'});
+else if(view==='monthly') label=d.toLocaleDateString('en-US',{month:'long'});
+else label=d.getFullYear().toString();
+grouped[label]=(grouped[label]||0)+item.emissions;
+});
+
+chartInstance=new Chart(ctx,{
+type:'bar',
+data:{
+labels:Object.keys(grouped),
+datasets:[{
+data:Object.values(grouped),
+backgroundColor:'#2ecc71',
+borderRadius:4
+}]
+},
+options:{
+plugins:{legend:{display:false}},
+scales:{
+y:{beginAtZero:true},
+x:{}
+}
+}
+});
+}
+
+/* SUSTAINABILITY */
+function generateSustainabilityInsights(){
+const history=JSON.parse(localStorage.getItem('ekoTrackData')||'[]');
+const container=document.getElementById('sustainContent');
+
+if(history.length===0){
+container.innerHTML="No data yet.";
+return;
+}
+
+const highestTrip=history.reduce((max,item)=>
+item.emissions>max.emissions?item:max
+);
+
+const bestOption=Object.keys(emissionFactors).reduce((best,mode)=>{
+const newEmission=highestTrip.distance*emissionFactors[mode];
+return newEmission<best.emission?{mode,emission:newEmission}:best;
+},{mode:highestTrip.transport,emission:highestTrip.emissions});
+
+const savings=highestTrip.emissions-bestOption.emission;
+const percent=((savings/highestTrip.emissions)*100).toFixed(1);
+
+container.innerHTML=`
+<div class="result">
+<h3>Highest Emission Trip</h3>
+<p><strong>${highestTrip.from}</strong> → <strong>${highestTrip.to}</strong></p>
+<p>Mode: ${highestTrip.transport}</p>
+<p>Carbon: ${highestTrip.emissions} kg CO₂</p>
+
+<hr style="margin:15px 0;border-color:#244534">
+
+<h3>🌱 Suggested Alternative</h3>
+<p>Switch to: <strong>${bestOption.mode}</strong></p>
+<p>New Emissions: ${bestOption.emission.toFixed(2)} kg CO₂</p>
+<p style="color:#2ecc71">
+You could save ${savings.toFixed(2)} kg CO₂ (${percent}% reduction)
+</p>
+</div>
+`;
+}
+
+/* CLEAR */
+function clearHistory(){
+if(confirm("Clear all data?")){
+localStorage.removeItem('ekoTrackData');
+renderChart();
+}
+}
+
+</script>
+</body>
+</html>
